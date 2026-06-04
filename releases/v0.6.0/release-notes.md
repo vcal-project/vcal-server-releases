@@ -51,8 +51,6 @@ For normal use, refer to the public documentation and the static `openapi.yml` f
 
 Customers who need runtime OpenAPI/docs UI access can request a custom build through VCAL Server support.
 
-https://server.docs.vcal-project.com/
-
 ## Support
 
 For licensing, support, or product questions, use the official contact channel:
