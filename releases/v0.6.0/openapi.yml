@@ -1,0 +1,1154 @@
+openapi: 3.0.3
+info:
+  title: VCAL Server API
+  version: 0.6.0
+  description: "On-prem semantic cache server to cut LLM calls, costs & latency. Find out more at `https://vcal-project.com`\n\n**Auth (API keys):**\n- Protected endpoints require an API key in **one** of:\n  - `X-VCAL-Key: <key>`\n  - `Authorization: Bearer <key>`\n- Two scopes:\n  - **App**: data-plane ops (`/v1/search`, `/v1/batch_search`, `/v1/qa`, `/v1/insert`, `/v1/upsert`, `/v1/delete`, `/v1/decision`)\n  - **Admin**: admin ops (`/v1/snapshot/*`, `/v1/answers/*`)\n- Public endpoints:\n  - `/healthz`, `/readyz`\n  - `/metrics` may be public **only if** `VCAL_ALLOW_METRICS_WITHOUT_AUTH=1`\n\n**Snapshots:**\n- **Index snapshots (`vcal.index`)** are saved as a **Snapshot Envelope v1** (JSON):\n  ```json\n  {\n    \"format\": \"vcal-hnsw\",\n    \"version\": 1,\n    \"saved_at\": 1757590482,\n    \"server_version\": \"v0.6.0\",\n    \"meta\": { \"dims\": 768 },\n    \"hnsw\": { \"dims\": 768, \"m\": 32, \"ef\": 128, \"efc\": 200, \"graph\": { /* ... */ } }\n  }\n  ```\n  Writes are **always\
+    \ atomic** (tmp file → rename).\n- **Answers snapshots (`answers.json`)** include top-level metadata:\n  ```json\n  { \"version\": 1, \"saved_at\": 1757590482, \"server_version\": \"v0.6.0\", \"answers\": [ /* ... */ ] }\n  ```\n- Saved/loaded under:\n  - Local `./data` when running the binary.\n  - `/var/lib/vcal/data` **inside the container** when running Docker.\n\n\n**Metrics exposed in v0.6.0 include:**\n- `vcal_cache_hits_total`, `vcal_cache_misses_total`, `vcal_tokens_saved_total`\n- `vcal_search_requests_total`, `vcal_batch_search_queries_total`\n- `vcal_search_errors_total`, `vcal_batch_search_errors_total`, `vcal_insert_errors_total`, `vcal_upsert_errors_total`, `vcal_delete_errors_total`\n- `vcal_search_latency_seconds`\n- `vcal_answers_cached`, `vcal_active_ids`, `vcal_index_size`\n- `vcal_snapshot_saves_total`, `vcal_snapshot_unixtime`, `vcal_snapshot_pause_ms`\n- `vcal_license_valid{tier=...}`, `vcal_license_days_until_expiry`\n- `vcal_config_tokens_per_hit`\n\n**Licensing:**\n\
+    - **[VCAL-core](https://github.com/vcal-project/vcal-core)** is under [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.html) license.\n- **VCAL Server** plus add-ons are under separate EULA.\n"
+servers:
+- url: http://localhost:8080
+  description: Local development
+- url: <your-production-instance>:8080
+  description: Production
+security: []
+x-tagGroups:
+- name: Public
+  tags:
+  - Health
+  - Search
+  - QA
+  - Core
+  - Decision
+  - Observability
+- name: Admin
+  tags:
+  - Snapshot
+  - Answers
+tags:
+- name: Health
+  description: Liveness/readiness endpoints (empty bodies)
+- name: Search
+  description: k-NN search endpoints (single and batch)
+- name: QA
+  description: Cache-aware vector lookup. Returns cached answer on hit; the client calls the LLM on miss.
+- name: Core
+  description: Insert, upsert, delete vectors and optional cached answers
+- name: Snapshot
+  description: Snapshot operations (admin scope). Index snapshots use a versioned JSON envelope (Snapshot Envelope v1).
+- name: Answers
+  description: Save/load answer payload snapshots (admin scope)
+- name: Decision
+  description: Gateway integration to record cache hit/miss and tokens saved
+- name: Observability
+  description: Prometheus metrics, including cache, latency, snapshot, token-saving, index, and license metrics.
+paths:
+  /healthz:
+    get:
+      tags:
+      - Health
+      summary: Liveness probe
+      operationId: getHealthz
+      responses:
+        '200':
+          description: Alive (no body)
+          content: {}
+        '503':
+          description: Unhealthy (no body)
+          content: {}
+  /readyz:
+    get:
+      tags:
+      - Health
+      summary: Readiness probe
+      operationId: getReadyz
+      responses:
+        '200':
+          description: Ready (no body)
+          content: {}
+        '503':
+          description: Not ready (no body)
+          content: {}
+  /v1/search:
+    post:
+      tags:
+      - Search
+      summary: k-NN search (single query)
+      operationId: postSearch
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      description: 'Returns top-k nearest hits to the query vector. Server expects "query" (legacy field), optional "_ef" for per-request ef override.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            examples:
+              ex:
+                value:
+                  k: 10
+                  query:
+                  - 0.0
+                  - 0.1
+                  - 0.2
+                  - 0.3
+                  _ef: 256
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              examples:
+                ex:
+                  value:
+                    hits:
+                    - id: 1
+                      distance: 0.0001
+                    - id: 2
+                      distance: 0.42
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/batch_search:
+    post:
+      tags:
+      - Search
+      summary: Batch k-NN search (multiple queries)
+      operationId: postBatchSearch
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      description: 'Returns top-k hits for each query provided. Response is array-of-arrays: { results: SearchHit[][] }. Optional "_ef" for per-request ef override.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchSearchRequest'
+            examples:
+              ex:
+                value:
+                  k: 5
+                  _ef: 256
+                  queries:
+                  - - 0.0
+                    - 0.1
+                    - 0.2
+                    - 0.3
+                  - - 0.4
+                    - 0.3
+                    - 0.2
+                    - 0.1
+      responses:
+        '200':
+          description: Batch results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchSearchResponse'
+              examples:
+                ex:
+                  value:
+                    results:
+                    - - id: 1
+                        distance: 0.0001
+                      - id: 2
+                        distance: 0.42
+                    - - id: 7
+                        distance: 0.12
+                      - id: 3
+                        distance: 0.39
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/qa:
+    post:
+      tags:
+      - QA
+      summary: Cache-aware lookup that may return an answer
+      operationId: postQa
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      description: 'Cache-aware vector query. The server searches for a similar cached answer and returns `hit: true` with the answer when the similarity threshold is met. On miss, the server returns `hit: false`; the calling application is responsible for calling the LLM and then storing the answer via `/v1/insert` or `/v1/upsert`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QaRequest'
+            examples:
+              ex:
+                value:
+                  k: 1
+                  sim_threshold: 0.8
+                  query:
+                  - 0.0
+                  - 0.1
+                  - 0.2
+                  - 0.3
+      responses:
+        '200':
+          description: QA decision and optional answer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QaResponse'
+              examples:
+                hit:
+                  value:
+                    hit: true
+                    id: 42
+                    distance: 0.05
+                    similarity: 0.95
+                    answer: Cached short answer
+                miss:
+                  value:
+                    hit: false
+                    id: null
+                    distance: null
+                    similarity: null
+                    answer: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/insert:
+    post:
+      tags:
+      - Core
+      summary: Insert a new vector (optionally with answer payload)
+      operationId: postInsert
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertRequest'
+            examples:
+              ex:
+                value:
+                  ext_id: 1
+                  vector:
+                  - 0.0
+                  - 0.1
+                  - 0.2
+                  - 0.3
+                  answer: Hello world
+                  prompt_tokens: 12
+                  answer_tokens: 34
+      responses:
+        '200':
+          description: Inserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+              examples:
+                ex:
+                  value:
+                    ok: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/upsert:
+    post:
+      tags:
+      - Core
+      summary: Insert or replace a vector by ext_id (optionally with answer payload)
+      operationId: postUpsert
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertRequest'
+            examples:
+              ex:
+                value:
+                  ext_id: 1
+                  vector:
+                  - 0.0
+                  - 0.1
+                  - 0.2
+                  - 0.3
+                  answer: Updated answer
+      responses:
+        '200':
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+              examples:
+                ex:
+                  value:
+                    ok: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+      description: Insert or replace a vector by external ID. Include `answer` to cache a text payload returned by `/v1/qa`.
+  /v1/delete:
+    post:
+      tags:
+      - Core
+      summary: Soft-delete a vector by ext_id
+      operationId: postDelete
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteRequest'
+            examples:
+              ex:
+                value:
+                  ext_id: 1
+      responses:
+        '200':
+          description: Deleted (or already absent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+              examples:
+                existed:
+                  value:
+                    ok: true
+                    deleted: true
+                absent:
+                  value:
+                    ok: true
+                    deleted: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/snapshot/save:
+    post:
+      tags:
+      - Snapshot
+      summary: Save index snapshot to ./data
+      operationId: postSnapshotSave
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      description: 'Triggers a snapshot save. The server **forces** the file to be saved under the local `./data` directory, using the filename portion of the provided "path". Returns path, bytes written, and unixtime. Writes are **always atomic**.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotSaveRequest'
+            examples:
+              ex:
+                value:
+                  path: vcal.index
+      responses:
+        '200':
+          description: Snapshot saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotSaveResponse'
+              examples:
+                ex:
+                  value:
+                    ok: true
+                    path: ./data/vcal.index
+                    bytes: 1048576
+                    unixtime: 1725043200
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/answers/save:
+    post:
+      tags:
+      - Answers
+      summary: Save cached answers snapshot to ./data
+      operationId: postAnswersSave
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      description: 'Saves the in-memory `ext_id -> answer` map (with token counts) to a JSON file. The server **forces** the file to be saved under the local `./data` directory, using the filename portion of the provided "path". File format is **Answers Snapshot v1** (see `components/schemas/AnswersSnapshotV1`).
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswersSaveRequest'
+            examples:
+              ex:
+                value:
+                  path: answers.json
+                  atomic: true
+      responses:
+        '200':
+          description: Answers snapshot saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswersSaveResponse'
+              examples:
+                ex:
+                  value:
+                    ok: true
+                    path: ./data/answers.json
+                    entries: 123
+                    bytes: 40960
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/answers/load:
+    post:
+      tags:
+      - Answers
+      summary: Load cached answers snapshot from ./data
+      operationId: postAnswersLoad
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      description: 'Loads answers from a JSON file into memory. By default replaces current map. Set `mode: "merge"` to merge. Set `retain_orphans: true` to keep answers whose IDs are not present in the current index (default is to drop them). Accepts **Answers Snapshot v1** and legacy formats (map forms).
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswersLoadRequest'
+            examples:
+              exReplace:
+                value:
+                  path: answers.json
+              exMerge:
+                value:
+                  path: answers.json
+                  mode: merge
+                  retain_orphans: false
+      responses:
+        '200':
+          description: Answers snapshot loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswersLoadResponse'
+              examples:
+                ex:
+                  value:
+                    ok: true
+                    path: ./data/answers.json
+                    loaded: 123
+                    kept: 120
+                    dropped: 3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/decision:
+    post:
+      tags:
+      - Decision
+      summary: Record a cache decision (hit/miss) and optional tokens saved
+      operationId: postDecision
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      description: 'Call this endpoint from your gateway **after** you''ve decided to serve from cache (hit) or call the LLM (miss). On hits you may pass a precise token count to increment `vcal_tokens_saved_total`; otherwise the server can use a configured default.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionRequest'
+            examples:
+              hit:
+                value:
+                  decision: hit
+                  tokens_saved: 742
+              miss:
+                value:
+                  decision: miss
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionResponse'
+              examples:
+                ex:
+                  value:
+                    ok: true
+                    decision: hit
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /metrics:
+    get:
+      tags:
+      - Observability
+      summary: Prometheus metrics
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Prometheus text exposition format
+          content:
+            text/plain; version=0.0.4:
+              schema:
+                type: string
+              examples:
+                metrics:
+                  value: '# HELP vcal_license_valid 1 if license is valid else 0
+
+                    # TYPE vcal_license_valid gauge
+
+                    vcal_license_valid{tier="testing"} 1
+
+                    # HELP vcal_cache_hits_total Cache hits (non-empty search results)
+
+                    # TYPE vcal_cache_hits_total counter
+
+                    vcal_cache_hits_total 0
+
+                    '
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Metrics temporarily unavailable
+      security:
+      - vcalApiKey: []
+      - vcalBearer: []
+      - {}
+      description: 'Returns Prometheus-compatible metrics. This endpoint is public only when `VCAL_ALLOW_METRICS_WITHOUT_AUTH=1`; otherwise use an app/admin key depending on deployment policy.
+
+
+        v0.6.0 exposes cache, latency, snapshot, index, token-saving, and license metrics. There is no separate `vcal_qa_errors_total` metric in the current v0.6.0 metrics surface.'
+components:
+  securitySchemes:
+    vcalApiKey:
+      type: apiKey
+      in: header
+      name: X-VCAL-Key
+    vcalBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  responses:
+    Unauthorized:
+      description: Missing API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            ex:
+              value:
+                error:
+                  code: FAILED_PRECONDITION
+                  message: missing API key
+    Forbidden:
+      description: Invalid API key or insufficient scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            ex:
+              value:
+                error:
+                  code: FAILED_PRECONDITION
+                  message: forbidden
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            ex:
+              value:
+                error:
+                  code: INVALID_ARGUMENT
+                  message: 'dimension mismatch: expected 768, found 4'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            ex:
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: ext_id not found
+    Conflict:
+      description: Already exists / conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            ex:
+              value:
+                error:
+                  code: ALREADY_EXISTS
+                  message: ext_id already present
+    Internal:
+      description: Internal error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            ex:
+              value:
+                error:
+                  code: INTERNAL
+                  message: unexpected error
+  schemas:
+    SnapshotEnvelopeV1:
+      type: object
+      required:
+      - format
+      - version
+      - saved_at
+      - server_version
+      - meta
+      - hnsw
+      properties:
+        format:
+          type: string
+          example: vcal-hnsw
+          description: Snapshot format identifier
+        version:
+          type: integer
+          example: 1
+          description: Snapshot schema version
+        saved_at:
+          type: integer
+          format: int64
+          example: 1757590482
+        server_version:
+          type: string
+          example: v0.6.0
+        meta:
+          type: object
+          required:
+          - dims
+          properties:
+            dims:
+              type: integer
+              example: 768
+        hnsw:
+          type: object
+          required:
+          - dims
+          - m
+          - ef
+          - efc
+          - graph
+          properties:
+            dims:
+              type: integer
+              example: 768
+            m:
+              type: integer
+              example: 32
+            ef:
+              type: integer
+              example: 128
+            efc:
+              type: integer
+              example: 200
+            graph:
+              type: object
+              description: Opaque HNSW graph payload used by VCAL
+      example:
+        format: vcal-hnsw
+        version: 1
+        saved_at: 1757590482
+        server_version: v0.6.0
+        meta:
+          dims: 768
+        hnsw:
+          dims: 768
+          m: 32
+          ef: 128
+          efc: 200
+          graph:
+            nodes: []
+    AnswersSnapshotV1:
+      type: object
+      required:
+      - version
+      - saved_at
+      - answers
+      properties:
+        version:
+          type: integer
+          example: 1
+        saved_at:
+          type: integer
+          format: int64
+          example: 1757590482
+        server_version:
+          type: string
+          example: v0.6.0
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnswerDumpEntry'
+      example:
+        version: 1
+        saved_at: 1757590482
+        server_version: v0.6.0
+        answers:
+        - id: 1
+          answer: Hello
+          prompt_tokens: 12
+          answer_tokens: 34
+    AnswerDumpEntry:
+      type: object
+      required:
+      - id
+      - answer
+      properties:
+        id:
+          type: integer
+          format: int64
+        answer:
+          type: string
+        prompt_tokens:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 0
+        answer_tokens:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 0
+    OkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
+      additionalProperties: false
+    DeleteResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        deleted:
+          type: boolean
+      required:
+      - ok
+      - deleted
+      additionalProperties: false
+    DecisionRequest:
+      type: object
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - hit
+          - miss
+        tokens_saved:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional exact tokens saved (if omitted, server may use a configured default)
+      additionalProperties: false
+    DecisionResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        decision:
+          type: string
+          enum:
+          - hit
+          - miss
+      required:
+      - ok
+      - decision
+      additionalProperties: false
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              enum:
+              - INVALID_ARGUMENT
+              - NOT_FOUND
+              - ALREADY_EXISTS
+              - FAILED_PRECONDITION
+              - INTERNAL
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+      required:
+      - error
+      additionalProperties: false
+    Vector:
+      type: array
+      items:
+        type: number
+        format: float
+      minItems: 1
+      description: Embedding vector (e.g., 768-D)
+    InsertRequest:
+      type: object
+      required:
+      - ext_id
+      - vector
+      properties:
+        ext_id:
+          type: integer
+          format: int64
+          description: External ID (u64).
+        vector:
+          $ref: '#/components/schemas/Vector'
+        answer:
+          type: string
+          description: Optional text payload to cache and return via /v1/qa
+        prompt_tokens:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Optional prompt token count for savings accounting
+        answer_tokens:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Optional answer token count for savings accounting
+      additionalProperties: false
+    DeleteRequest:
+      type: object
+      required:
+      - ext_id
+      properties:
+        ext_id:
+          type: integer
+          format: int64
+      additionalProperties: false
+    SearchRequest:
+      type: object
+      required:
+      - k
+      - query
+      properties:
+        k:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        query:
+          $ref: '#/components/schemas/Vector'
+          description: Query vector (legacy field name used by server).
+        _ef:
+          type: integer
+          minimum: 1
+          description: Optional per-request HNSW ef override.
+      additionalProperties: false
+    SearchHit:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        distance:
+          type: number
+          format: float
+      required:
+      - id
+      - distance
+      additionalProperties: false
+    SearchResponse:
+      type: object
+      properties:
+        hits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+      required:
+      - hits
+      additionalProperties: false
+    BatchSearchRequest:
+      type: object
+      required:
+      - k
+      - queries
+      properties:
+        k:
+          type: integer
+          minimum: 1
+        queries:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Vector'
+        _ef:
+          type: integer
+          minimum: 1
+          description: Optional per-request HNSW ef override.
+      additionalProperties: false
+    BatchSearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          description: Array of per-query hit lists
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/SearchHit'
+      required:
+      - results
+      additionalProperties: false
+    QaRequest:
+      type: object
+      required:
+      - query
+      properties:
+        query:
+          $ref: '#/components/schemas/Vector'
+        k:
+          type: integer
+          minimum: 1
+          default: 1
+        _ef:
+          type: integer
+          minimum: 1
+          description: Optional per-request HNSW ef override.
+        sim_threshold:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 0.8
+          description: Cosine similarity threshold to qualify as a cache hit
+        tokens_saved:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional override token savings to count on hit
+      additionalProperties: false
+    QaResponse:
+      type: object
+      properties:
+        hit:
+          type: boolean
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        distance:
+          type: number
+          format: float
+          nullable: true
+        similarity:
+          type: number
+          format: float
+          nullable: true
+        answer:
+          type: string
+          nullable: true
+      required:
+      - hit
+      additionalProperties: false
+    SnapshotSaveRequest:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+          description: Filename to write under local ./data directory
+        atomic:
+          type: boolean
+          default: true
+          deprecated: true
+          description: 'Deprecated. Snapshot writes are always atomic (tmp file → rename). This field is ignored since API v0.5.0.
+
+            '
+      additionalProperties: false
+    SnapshotSaveResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        path:
+          type: string
+        bytes:
+          type: integer
+          format: int64
+        unixtime:
+          type: integer
+          format: int64
+      required:
+      - ok
+      - path
+      - bytes
+      - unixtime
+      additionalProperties: false
+    AnswersSaveRequest:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+          description: Filename to write under local ./data directory
+        atomic:
+          type: boolean
+          default: true
+      additionalProperties: false
+    AnswersSaveResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        path:
+          type: string
+        entries:
+          type: integer
+          format: int64
+        bytes:
+          type: integer
+          format: int64
+      required:
+      - ok
+      - path
+      - entries
+      - bytes
+      additionalProperties: false
+    AnswersLoadRequest:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+          description: Filename to read from local ./data directory
+        mode:
+          type: string
+          enum:
+          - replace
+          - merge
+          default: replace
+        retain_orphans:
+          type: boolean
+          default: false
+          description: Keep answers for IDs not present in the current index
+      additionalProperties: false
+    AnswersLoadResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        path:
+          type: string
+        loaded:
+          type: integer
+          format: int64
+        kept:
+          type: integer
+          format: int64
+        dropped:
+          type: integer
+          format: int64
+      required:
+      - ok
+      - path
+      - loaded
+      - kept
+      - dropped
+      additionalProperties: false
