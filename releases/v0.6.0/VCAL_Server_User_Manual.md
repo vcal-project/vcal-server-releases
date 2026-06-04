@@ -328,17 +328,13 @@ https://server.docs.vcal-project.com
 
 ### OpenAPI and Docs UI Availability
 
-The static OpenAPI specification may be provided as `openapi.yml` alongside release artifacts.
+The static OpenAPI specification is provided as a release artifact where applicable.
 
-The standard free testing build does not expose the built-in OpenAPI/docs UI at runtime. This keeps the default binary smaller and avoids exposing API documentation endpoints by default.
+The standard free testing build of VCAL Server does not expose the built-in OpenAPI/docs UI at runtime. The docs UI is disabled by default in the binary build.
 
-The runtime OpenAPI/docs UI can be enabled in a custom build with the `docs-ui` Cargo feature:
+For normal use, refer to the public documentation and the static `openapi.yml` file: https://server.docs.vcal-project.com/
 
-```bash
-cargo build --release --features docs-ui
-```
-
-For the free testing build, use the public documentation and the static openapi.yml file instead of expecting an in-server OpenAPI UI endpoint.
+Customers who need runtime OpenAPI/docs UI access can request a custom build through VCAL Server support.
 
 ---
 
