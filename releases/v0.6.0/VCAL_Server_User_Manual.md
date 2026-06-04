@@ -326,6 +326,20 @@ Full API documentation:
 https://server.docs.vcal-project.com
 ```
 
+### OpenAPI and Docs UI Availability
+
+The static OpenAPI specification may be provided as `openapi.yml` alongside release artifacts.
+
+The standard free testing build does not expose the built-in OpenAPI/docs UI at runtime. This keeps the default binary smaller and avoids exposing API documentation endpoints by default.
+
+The runtime OpenAPI/docs UI can be enabled in a custom build with the `docs-ui` Cargo feature:
+
+```bash
+cargo build --release --features docs-ui
+```
+
+For the free testing build, use the public documentation and the static openapi.yml file instead of expecting an in-server OpenAPI UI endpoint.
+
 ---
 
 ## 8. Python Integration Example

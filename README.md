@@ -34,6 +34,12 @@ Recommended starting points:
 
 Docker images and binaries may be linked from GitHub Releases when available.
 
+## OpenAPI Specification
+
+This repository may include a static `openapi.yml` file for VCAL Server releases.
+
+The standard free testing build of VCAL Server does not expose the built-in OpenAPI/docs UI at runtime. Runtime OpenAPI/docs UI access is disabled by default and can be enabled only in a custom build using the `docs-ui` Cargo feature.
+
 ## Support
 
 For product questions, licensing, or support, please use the official contact channels:
