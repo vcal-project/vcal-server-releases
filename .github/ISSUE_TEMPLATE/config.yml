@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: VCAL Server Support
+    url: https://vcal-project.com/vcal-server/#contact
+    about: Contact VCAL Labs for VCAL Server support, licensing, or product questions.
+  - name: VCAL Server Documentation
+    url: https://server.docs.vcal-project.com/
+    about: Read the VCAL Server documentation.

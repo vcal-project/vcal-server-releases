@@ -1,0 +1,15 @@
+# Local OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Temporary files
+*.tmp
+*.log
+
+# Local release staging
+dist/
+build/
+release-assets/
+checksums/
