@@ -1,27 +1,27 @@
-# VCAL Server — User Manual
+# VCAL Semantic Cache — User Manual
 
-**VCAL Server** is a production-ready semantic cache for LLM and RAG workloads.  
+**VCAL Semantic Cache** is a production-ready semantic cache for LLM and RAG workloads.  
 It reduces repeated LLM calls, cuts token costs, and serves cached answers with millisecond latency while running inside your infrastructure.
 
 VCAL follows an **open-core model**:
 
 - **vcal-core** — open-source Rust caching engine
-- **VCAL Server** — commercial HTTP service with licensing, observability, persistence, and deployment tooling
+- **VCAL Semantic Cache** — commercial HTTP service with licensing, observability, persistence, and deployment tooling
 
 ---
 
-## 1. What VCAL Server Does
+## 1. What VCAL Semantic Cache Does
 
-VCAL Server acts as a **semantic cache layer** for LLM applications.
+VCAL Semantic Cache acts as a **semantic cache layer** for LLM applications.
 
 Your application remains responsible for:
 
 1. embedding the user input into a vector,
-2. asking VCAL Server whether a similar answer already exists,
+2. asking VCAL Semantic Cache whether a similar answer already exists,
 3. calling the LLM on a cache miss,
-4. storing the new vector and answer back into VCAL Server.
+4. storing the new vector and answer back into VCAL Semantic Cache.
 
-VCAL Server itself does **not** call the LLM and does **not** generate embeddings automatically.
+VCAL Semantic Cache itself does **not** call the LLM and does **not** generate embeddings automatically.
 
 Typical use cases:
 
@@ -109,7 +109,7 @@ This writes a signed license file to:
 
 ---
 
-### 3.4 Start VCAL Server
+### 3.4 Start VCAL Semantic Cache
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -121,7 +121,7 @@ docker run --rm -p 8080:8080 \
   ghcr.io/vcal-project/vcal-server:v0.6.0
 ```
 
-VCAL Server is now available at:
+VCAL Semantic Cache is now available at:
 
 ```text
 http://localhost:8080
@@ -131,7 +131,7 @@ http://localhost:8080
 
 ### 3.5 Test the server
 
-After starting VCAL Server, verify that it is running correctly.
+After starting VCAL Semantic Cache, verify that it is running correctly.
 
 #### 1) Health and readiness checks
 
@@ -263,7 +263,7 @@ VCAL_LICENSE_PATH=/etc/vcal/license.json vcal-server
 
 ## 5. Configuration
 
-VCAL Server is configured primarily through environment variables.
+VCAL Semantic Cache is configured primarily through environment variables.
 
 Common options:
 
@@ -296,13 +296,13 @@ If `VCAL_DIMS` is not recoverable from an existing snapshot, set it explicitly. 
 - **Enterprise**  
   Multi-app, security reviews, SLAs, and custom terms.
 
-VCAL Server will not start without a valid license file.
+VCAL Semantic Cache will not start without a valid license file.
 
 ---
 
 ## 7. API Overview
 
-VCAL Server exposes a JSON HTTP API.
+VCAL Semantic Cache exposes a JSON HTTP API.
 
 Common endpoints:
 
@@ -330,17 +330,17 @@ https://server.docs.vcal-project.com
 
 The static OpenAPI specification is provided as a release artifact where applicable.
 
-The standard free testing build of VCAL Server does not expose the built-in OpenAPI/docs UI at runtime. The docs UI is disabled by default in the binary build.
+The standard free testing build of VCAL Semantic Cache does not expose the built-in OpenAPI/docs UI at runtime. The docs UI is disabled by default in the binary build.
 
 For normal use, refer to the public documentation and the static `openapi.yml` file: https://server.docs.vcal-project.com/
 
-Customers who need runtime OpenAPI/docs UI access can request a custom build through VCAL Server support.
+Customers who need runtime OpenAPI/docs UI access can request a custom build through VCAL Semantic Cache support.
 
 ---
 
 ## 8. Python Integration Example
 
-VCAL Server integrates as a lightweight vector cache in front of your LLM. Your application is responsible for embedding text into vectors and calling the LLM on cache misses.
+VCAL Semantic Cache integrates as a lightweight vector cache in front of your LLM. Your application is responsible for embedding text into vectors and calling the LLM on cache misses.
 
 The example below uses Ollama embeddings by default. Replace the embedding function and LLM fallback with your production providers.
 
@@ -350,7 +350,7 @@ The example below uses Ollama embeddings by default. Replace the embedding funct
 Minimal VCAL integration flow:
 
 1. Embed the user question.
-2. Ask VCAL Server /v1/qa with the embedding vector.
+2. Ask VCAL Semantic Cache /v1/qa with the embedding vector.
 3. On hit, return the cached answer.
 4. On miss, call your LLM and store the answer via /v1/upsert.
 """
@@ -464,7 +464,7 @@ Production recommendations:
 
 ## 9. Metrics & Monitoring
 
-VCAL Server exports Prometheus-compatible metrics through `/metrics`.
+VCAL Semantic Cache exports Prometheus-compatible metrics through `/metrics`.
 
 Common metric areas include:
 
@@ -482,7 +482,7 @@ A ready-to-import Grafana dashboard JSON is provided alongside the release artif
 
 ## 10. Data & Persistence
 
-VCAL Server supports persistent cache data and snapshots.
+VCAL Semantic Cache supports persistent cache data and snapshots.
 
 Recommended production practices:
 
@@ -523,13 +523,13 @@ Recommended upgrade procedure:
 ## 13. Support & Documentation
 
 - vcal-core docs: https://vcal-core.docs.vcal-project.com/
-- VCAL Server docs: https://server.docs.vcal-project.com
+- VCAL Semantic Cache docs: https://server.docs.vcal-project.com
 - Support: support@vcal-project.com
 
 ---
 
 ## 14. License
 
-VCAL Server is distributed under a commercial license.
+VCAL Semantic Cache is distributed under a commercial license.
 
-VCAL Server is developed by VCAL Labs, Inc.
+VCAL Semantic Cache is developed by VCAL Labs, Inc.

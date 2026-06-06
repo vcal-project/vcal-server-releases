@@ -1,8 +1,8 @@
-# VCAL Server v0.6.0
+# VCAL Semantic Cache v0.6.0
 
-This is the first public GitHub Release for VCAL Server.
+This is the first public GitHub Release for VCAL Semantic Cache.
 
-VCAL Server is commercial, closed-source software. This repository does not contain the VCAL Server source code.
+VCAL Semantic Cache is commercial, closed-source software. This repository does not contain the VCAL Semantic Cache source code.
 
 ## Downloads
 
@@ -17,11 +17,11 @@ Each archive is published together with:
 - `.sha256` checksum file
 - `.minisig` signature file
 
-The same release files are also available through the official VCAL Server download page:
+The same release files are also available through the official VCAL Semantic Cache download page:
 
 https://vcal-project.com/vcal-server/
 
-Full VCAL Server documentation is available here: https://server.docs.vcal-project.com/
+Full VCAL Semantic Cache documentation is available here: https://server.docs.vcal-project.com/
 
 ## Build selection
 
@@ -45,11 +45,11 @@ Replace the filename with the build you downloaded.
 
 The static OpenAPI specification is provided as a release artifact where applicable.
 
-The standard free testing build of VCAL Server does not expose the built-in OpenAPI/docs UI at runtime. The docs UI is disabled by default in the binary build.
+The standard free testing build of VCAL Semantic Cache does not expose the built-in OpenAPI/docs UI at runtime. The docs UI is disabled by default in the binary build.
 
 For normal use, refer to the public documentation and the static `openapi.yml` file: https://server.docs.vcal-project.com/
 
-Customers who need runtime OpenAPI/docs UI access can request a custom build through VCAL Server support.
+Customers who need runtime OpenAPI/docs UI access can request a custom build through VCAL Semantic Cache support.
 
 ## Support
 
