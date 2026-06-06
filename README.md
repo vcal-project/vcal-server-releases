@@ -1,4 +1,4 @@
-# VCAL Semantic Cache Releases
+# VCAL Semantic Cache (Former VCAL Server) Releases
 
 This repository hosts public release information for **VCAL Semantic Cache**.
 
